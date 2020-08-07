@@ -25,6 +25,7 @@ mod workspace;
 
 use crate::types::*;
 use crate::util::*;
+use backtrace::Backtrace;
 use clap::{crate_version, App, Arg};
 use daemonize::Daemonize;
 use itertools::Itertools;
@@ -122,10 +123,12 @@ fn main() {
             })
         });
 
+    println!("Config path {:?}", config_path);
     if let Some(config_path) = config_path {
         config = fs::read_to_string(config_path).expect("Failed to read config");
     }
 
+    println!("Config is {}", config);
     let mut config: Config = toml::from_str(&config).expect("Failed to parse config file");
 
     config.server.session = String::from(matches.value_of("session").unwrap());
@@ -249,7 +252,8 @@ fn setup_logger(config: &Config, matches: &clap::ArgMatches<'_>) -> slog_scope::
     };
 
     panic::set_hook(Box::new(|panic_info| {
-        error!("panic: {}", panic_info);
+        let backtrace = Backtrace::new();
+        error!("panic: {} {:?}", panic_info, backtrace);
     }));
 
     slog_scope::set_global_logger(logger)

@@ -6,6 +6,7 @@ edition = "2018"
 license = "Unlicense/MIT"
 
 [dependencies]
+backtrace = "0.3"
 crossbeam-channel = "0.4.2"
 clap = "2.33.1"
 daemonize = "0.4.1"

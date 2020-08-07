@@ -86,6 +86,17 @@ fn get_byte_index(char_index: usize, text: RopeSlice) -> usize {
     text.char_to_byte(min(char_index, text.len_chars()))
 }
 
+fn get_byte_index_(char_index: usize, text: RopeSlice) -> usize {
+    if char_index >= text.len_chars() {
+        error!(
+            "accessing out of bound character index({}) text({})",
+            char_index, text
+        )
+    }
+
+    text.char_to_byte(min(char_index, text.len_chars()))
+}
+
 fn lsp_range_to_kakoune_utf_8_code_points(range: &Range, text: &Rope) -> KakouneRange {
     let Range { start, end } = range;
 
@@ -178,11 +189,35 @@ fn lsp_range_to_kakoune_utf_8_code_units(range: &Range) -> KakouneRange {
 
 fn kakoune_position_to_lsp_utf_8_code_points(position: &KakounePosition, text: &Rope) -> Position {
     // -1 because LSP & Rope ranges are 0-based, but Kakoune's are 1-based.
-    let line = position.line - 1;
-    let character = text
-        .line(line as _)
-        .byte_to_char((position.column - 1) as _) as _;
-    Position { line, character }
+
+    let result = std::panic::catch_unwind(|| {
+        let line = position.line - 1;
+        let text_line = text.line(line as _);
+        let column: usize = if position.column - 1 < text_line.len_bytes() as u64 {
+            (position.column - 1) as usize
+        } else {
+            error!(
+                "Column({}) exceeds length of line({})",
+                position.column - 1,
+                text_line.len_bytes()
+            );
+            text_line.len_bytes() as _
+        };
+        let character = text.line(line as _).byte_to_char(column as _) as _;
+        Position { line, character }
+    });
+    if result.is_err() {
+        error!("text is {:?}", text);
+        error!("position is {:?}", position);
+        let line_index = (position.line - 1) as usize;
+        let len = text.len_lines();
+        if line_index >= len {
+            error!("line_index({}) is more than len({})", line_index, len);
+        } else {
+            error!("line is {:?}", text.line(line_index));
+        }
+    }
+    result.unwrap()
 }
 
 fn kakoune_position_to_lsp_utf_8_code_units(position: &KakounePosition) -> Position {
@@ -194,9 +229,9 @@ fn kakoune_position_to_lsp_utf_8_code_units(position: &KakounePosition) -> Posit
 }
 
 fn lsp_position_to_kakoune_utf_8_code_points(position: &Position, text: &Rope) -> KakounePosition {
-    let byte: u64 = text
-        .line(position.line as _)
-        .char_to_byte(position.character as _) as _;
+    let byte: u64 =
+        get_byte_index_(position.character as usize, text.line(position.line as _)) as _;
+
     // +1 because LSP ranges are 0-based, but Kakoune's are 1-based.
     KakounePosition {
         line: position.line + 1,
